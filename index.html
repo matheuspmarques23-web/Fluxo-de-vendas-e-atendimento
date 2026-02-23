@@ -41,13 +41,14 @@
       display:flex;align-items:center;gap:12px;min-width:0;
     }
     .logo{
-      width:44px;height:44px;border-radius:12px;
+      width:52px;height:52px;border-radius:12px;
       display:grid;place-items:center;
-      background: rgba(255,212,0,.12);
+      background:#05070a;
       border:1px solid rgba(255,212,0,.35);
       overflow:hidden;
+      padding:4px;
     }
-    .logo svg{width:34px;height:34px}
+    .logo svg{width:100%;height:100%;display:block}
     .title{
       line-height:1.1;min-width:0;
     }
@@ -252,9 +253,13 @@
     .modal{
       width:min(820px, 100%);
       border:1px solid var(--line);
-      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+      background: #111c2a;
       border-radius:18px;box-shadow: var(--shadow);
       overflow:hidden;
+    }
+    .modal input, .modal select, .modal textarea{
+      background:#0b131d;
+      border-color:#32495f;
     }
     .modalHeader{
       padding:14px 14px;border-bottom:1px solid var(--line);
@@ -282,12 +287,20 @@
   <div class="wrap">
     <header>
       <div class="brand">
-        <div class="logo" title="Chevrolet / GM (ícone estilizado)">
-          <!-- Ícone simples (não é logo oficial). Se você quiser usar a logo real, eu coloco quando você me mandar o PNG/SVG. -->
-          <svg viewBox="0 0 64 64" aria-hidden="true">
-            <path fill="rgba(255,212,0,.95)" d="M10 28h18l4-10h22v12H40l-4 10H10z"/>
-            <path fill="rgba(255,255,255,.65)" d="M12 30h22l4-10h14v8H40l-4 10H12z"/>
-            <path fill="rgba(0,0,0,.35)" d="M10 28h18l4-10h22v2H33l-4 10H10z"/>
+        <div class="logo" title="Chevrolet / GM">
+          <svg viewBox="0 0 64 32" aria-hidden="true">
+            <defs>
+              <linearGradient id="goldA" x1="0" x2="1">
+                <stop offset="0" stop-color="#6f5313"/>
+                <stop offset="0.18" stop-color="#e7cf84"/>
+                <stop offset="0.5" stop-color="#c6a759"/>
+                <stop offset="0.82" stop-color="#f5e2a6"/>
+                <stop offset="1" stop-color="#82631d"/>
+              </linearGradient>
+            </defs>
+            <path fill="url(#goldA)" stroke="#b9a271" stroke-width="1.5" d="M2 12h20l3-6h14v6h23v8H42l-3 6H25v-6H2z"/>
+            <path fill="rgba(255,255,255,.35)" d="M4 13h20l3-6h10v2H26l-3 6H4z"/>
+            <path fill="rgba(0,0,0,.28)" d="M2 20h23l3 6h11v-2H30l-3-6H2z"/>
           </svg>
         </div>
         <div class="title">
@@ -705,8 +718,9 @@
    =========================== */
 
 const LS_KEY = "fluxo_gm_v1";
+const DEFAULT_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbyD2TI1qmkBryQngjZ0eXb9dBnba5L5XS0zwxlBkfx2PccrLMbdOCmQY7UoxEg36nYo/exec";
 const DEFAULTS = {
-  webappUrl: "https://script.google.com/macros/s/AKfycbyD2TI1qmkBryQngjZ0eXb9dBnba5L5XS0zwxlBkfx2PccrLMbdOCmQY7UoxEg36nYo/exec",
+  webappUrl: DEFAULT_WEBAPP_URL,
   intervalSec: 60,
   storeName: "",
   vendors: ["LUCIANO", "MOTTA", "RANNDARA"],
@@ -872,6 +886,12 @@ function boot(){
   renderAll();
   syncNow(false);
 
+  // conectividade do navegador
+  window.addEventListener("online", () => syncNow(true));
+  window.addEventListener("offline", () => {
+    setStatus("bad", "offline (sem internet)", "⚠️ Sem internet no navegador. O sistema continua em cache local.");
+  });
+
   // schedule
   reschedule();
 }
@@ -881,7 +901,7 @@ function loadState(){
     const raw = localStorage.getItem(LS_KEY);
     if(!raw) return structuredClone(DEFAULTS);
     const parsed = JSON.parse(raw);
-    return {
+    const loaded = {
       ...structuredClone(DEFAULTS),
       ...parsed,
       vendors: Array.isArray(parsed.vendors) && parsed.vendors.length ? parsed.vendors : structuredClone(DEFAULTS.vendors),
@@ -889,6 +909,8 @@ function loadState(){
       cachedRows: Array.isArray(parsed.cachedRows) ? parsed.cachedRows : [],
       salesByDate: parsed.salesByDate || {}
     };
+    loaded.webappUrl = String(loaded.webappUrl || "").trim() || DEFAULT_WEBAPP_URL;
+    return loaded;
   }catch(e){
     return structuredClone(DEFAULTS);
   }
@@ -913,6 +935,20 @@ function setStatus(kind, msg, details){
   if(details){
     statusDetails.innerHTML = details;
   }
+}
+
+function resolveWebAppUrl(raw){
+  const value = String(raw || "").trim() || DEFAULT_WEBAPP_URL;
+  let url = null;
+  try{
+    url = new URL(value);
+  }catch(_){
+    throw new Error("URL do WebApp inválida. Revise em Configurações.");
+  }
+  if(!/^https?:$/.test(url.protocol)){
+    throw new Error("URL do WebApp deve começar com http:// ou https://.");
+  }
+  return url;
 }
 
 function switchTab(name){
@@ -973,7 +1009,7 @@ function closeModal(){
 async function healthCheck(){
   try{
     setStatus("warn", "testando conexão…");
-    const url = new URL(state.webappUrl);
+    const url = resolveWebAppUrl(state.webappUrl);
     url.searchParams.set("action","health");
     const r = await fetch(url.toString(), { method:"GET" });
     const j = await r.json();
@@ -993,7 +1029,7 @@ async function syncNow(force){
 
   try{
     setStatus("warn", "sincronizando…");
-    const url = new URL(state.webappUrl);
+    const url = resolveWebAppUrl(state.webappUrl);
     url.searchParams.set("action","list");
     url.searchParams.set("limit","3000"); // ajuste se precisar mais
     // (filtros por data poderiam vir aqui, mas como seu script pode não ter, filtramos local)
@@ -1020,7 +1056,10 @@ async function syncNow(force){
   }catch(e){
     lastSyncOk = false;
     // mantém cache e avisa
-    setStatus("bad", "offline (usando cache)", `⚠️ Não consegui atualizar agora. Mostrando dados do cache local.<br/>Erro: <span class="mono small">${escapeHtml(String(e))}</span>`);
+    const isOnline = navigator.onLine;
+    const kind = isOnline ? "warn" : "bad";
+    const msg = isOnline ? "online (falha de sincronização)" : "offline (usando cache)";
+    setStatus(kind, msg, `⚠️ Não consegui atualizar agora. Mostrando dados do cache local.<br/>Erro: <span class="mono small">${escapeHtml(String(e))}</span>`);
     renderAll();
   }
 }
@@ -1055,17 +1094,56 @@ async function saveRecord(){
     $("btnSave").disabled = true;
     $("btnSave").textContent = "Salvando…";
 
-    const r = await fetch(state.webappUrl, {
-      method:"POST",
-      headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify({ action:"add", record: rec })
-    });
+    const webappUrl = resolveWebAppUrl(state.webappUrl).toString();
+
+    // Alguns WebApps do Google falham com preflight/CORS ao receber JSON puro.
+    // Tentamos formatos compatíveis em sequência, incluindo no-cors.
+    const payload = JSON.stringify({ action:"add", record: rec });
+    const attempts = [
+      () => fetch(webappUrl, {
+        method:"POST",
+        headers:{ "Content-Type":"text/plain;charset=utf-8" },
+        body: payload
+      }),
+      () => fetch(webappUrl, {
+        method:"POST",
+        headers:{ "Content-Type":"application/x-www-form-urlencoded;charset=UTF-8" },
+        body: new URLSearchParams({ action:"add", payload }).toString()
+      }),
+      // fallback final: garante envio mesmo quando o navegador bloqueia leitura da resposta (opaque)
+      () => fetch(webappUrl, {
+        method:"POST",
+        mode:"no-cors",
+        headers:{ "Content-Type":"text/plain;charset=utf-8" },
+        body: payload
+      }),
+    ];
 
     let j = null;
-    try{ j = await r.json(); }catch(_){}
+    let lastErr = null;
+    let sentWithNoCors = false;
+    for(const run of attempts){
+      try{
+        const r = await run();
+        if(r.type === "opaque"){
+          sentWithNoCors = true;
+          break;
+        }
+        const raw = await r.text();
+        try{ j = JSON.parse(raw); }catch(_){ j = null; }
+        if(!r.ok){
+          throw new Error(`HTTP ${r.status} ${r.statusText}`);
+        }
+        if(j && j.ok) break;
+        throw new Error(j ? JSON.stringify(j) : `Resposta inválida do servidor: ${raw.slice(0,220)}`);
+      }catch(err){
+        lastErr = err;
+        j = null;
+      }
+    }
 
-    if(!j || !j.ok){
-      throw new Error(j ? JSON.stringify(j) : "Resposta inválida do servidor");
+    if(!sentWithNoCors && (!j || !j.ok)){
+      throw (lastErr || new Error("Não foi possível salvar no WebApp."));
     }
 
     // Atualiza cache local “instantâneo”
@@ -1074,14 +1152,19 @@ async function saveRecord(){
     saveState();
 
     closeModal();
-    setStatus("ok", "registro inserido", `✅ Atendimento salvo na planilha e em cache local. <strong>${new Date(state.cachedAt).toLocaleString("pt-BR")}</strong>`);
+    if(sentWithNoCors){
+      setStatus("warn", "registro enviado (no-cors)", `⚠️ Envio feito com <span class="mono small">no-cors</span>. O navegador não permite ler a resposta, mas o dado foi enviado e salvo em cache local. Atualize em alguns segundos para confirmar na planilha.`);
+      setTimeout(() => syncNow(true), 1800);
+    }else{
+      setStatus("ok", "registro inserido", `✅ Atendimento salvo na planilha e em cache local. <strong>${new Date(state.cachedAt).toLocaleString("pt-BR")}</strong>`);
+    }
     renderAll();
 
     // opcional: avançar vendedor da vez automaticamente
     // nextSeller();
 
   }catch(e){
-    setStatus("bad", "falha ao inserir", `Erro: <span class="mono small">${escapeHtml(String(e))}</span>`);
+    setStatus("bad", "falha ao inserir", `Erro: <span class="mono small">${escapeHtml(String(e))}</span><br/>Dica: publique o WebApp como 'Qualquer pessoa', permita <span class="mono small">doPost(e)</span> e trate JSON + URL encoded.`);
     alert("Falha ao salvar. Veja o status no topo.");
   }finally{
     $("btnSave").disabled = false;
@@ -1462,72 +1545,59 @@ async function exportDaily(mode){
     const semisFlux = drawBlock(leftX, topY + h1 + hGap, leftW, h1, "SEMINOVOS", "", "#89d46a", blocks.SEMINOVOS);
     const vdFlux    = drawBlock(leftX, topY + (h1 + hGap)*2, leftW, h1, "VD", "", "#b8c7ff", blocks.VD);
 
-    // totals right
-    const drawTotalBox = (x,y,w,title,color,value) => {
+    // coluna da direita com 6 caixas (mesma fileira visual)
+    const drawStatBox = (x,y,w,h,title,color,value,foot="") => {
       ctx.strokeStyle="#111"; ctx.lineWidth=3;
-      roundRect(ctx, x,y,w,170,14); ctx.stroke();
+      roundRect(ctx, x,y,w,h,14); ctx.stroke();
+
+      const headH = 46;
       ctx.fillStyle=color;
-      roundRect(ctx, x,y,w,64,14); ctx.fill(); ctx.stroke();
-      ctx.fillStyle="#111"; ctx.font="bold 16px Arial";
+      roundRect(ctx, x,y,w,headH,14); ctx.fill(); ctx.stroke();
+
+      ctx.fillStyle="#111"; ctx.font="bold 14px Arial";
       const lines = title.split("\n");
-      ctx.fillText(lines[0], x+w/2-ctx.measureText(lines[0]).width/2, y+26);
-      ctx.fillText(lines[1], x+w/2-ctx.measureText(lines[1]).width/2, y+50);
-      ctx.fillStyle="#fff"; ctx.fillRect(x+3, y+64, w-6, 106);
-      ctx.strokeStyle="#111"; ctx.lineWidth=3;
-      ctx.beginPath(); ctx.moveTo(x, y+64); ctx.lineTo(x+w, y+64); ctx.stroke();
-      ctx.fillStyle="#111"; ctx.font="bold 64px Arial";
+      const line1 = lines[0] || "";
+      const line2 = lines[1] || "";
+      ctx.fillText(line1, x+w/2-ctx.measureText(line1).width/2, y+20);
+      if(line2){
+        ctx.fillText(line2, x+w/2-ctx.measureText(line2).width/2, y+38);
+      }
+
+      const footH = foot ? 30 : 0;
+      const valueAreaY = y + headH;
+      const valueAreaH = h - headH - footH;
+      ctx.fillStyle="#fff";
+      ctx.fillRect(x+3, valueAreaY, w-6, valueAreaH);
+      ctx.strokeStyle="#111"; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(x, valueAreaY); ctx.lineTo(x+w, valueAreaY); ctx.stroke();
+
+      ctx.fillStyle="#111";
+      ctx.font = valueAreaH > 78 ? "bold 52px Arial" : "bold 42px Arial";
       const txt = String(value);
-      ctx.fillText(txt, x+w/2-ctx.measureText(txt).width/2, y+142);
+      ctx.fillText(txt, x+w/2-ctx.measureText(txt).width/2, valueAreaY + valueAreaH/2 + 16);
+
+      if(foot){
+        ctx.fillStyle="#f3f3f3";
+        ctx.fillRect(x+3, y+h-footH, w-6, footH-3);
+        ctx.strokeStyle="#111"; ctx.lineWidth=2;
+        ctx.beginPath(); ctx.moveTo(x, y+h-footH); ctx.lineTo(x+w, y+h-footH); ctx.stroke();
+        ctx.fillStyle="#111"; ctx.font="bold 13px Arial";
+        ctx.fillText(foot, x+w/2-ctx.measureText(foot).width/2, y+h-10);
+      }
     };
 
-    drawTotalBox(rightX, topY, rightW, "TOTAL DE FLUXO\nNOVOS", "#ffe600", novosFlux);
-    drawTotalBox(rightX, topY + 188, rightW, "TOTAL DE FLUXO\nSEMINOVOS", "#89d46a", semisFlux);
-    drawTotalBox(rightX, topY + 376, rightW, "TOTAL DE FLUXO\nVD", "#b8c7ff", vdFlux);
+    // 6 itens na mesma coluna da direita
+    const rightTop = topY;
+    const boxGap = 10;
+    const boxH = 128;
 
-    // mini summary bottom
-    const drawMini = (x,y,w,h,headColor,title,value,flux,conv) => {
-      ctx.strokeStyle="#111"; ctx.lineWidth=3;
-      roundRect(ctx,x,y,w,h,14); ctx.stroke();
-      ctx.fillStyle=headColor;
-      roundRect(ctx,x,y,w,72,14); ctx.fill(); ctx.stroke();
-      ctx.fillStyle="#111"; ctx.font="bold 16px Arial";
-      const t1 = title.split("\n");
-      ctx.fillText(t1[0], x+w/2-ctx.measureText(t1[0]).width/2, y+28);
-      ctx.fillText(t1[1], x+w/2-ctx.measureText(t1[1]).width/2, y+54);
+    drawStatBox(rightX, rightTop + (boxH + boxGap)*0, rightW, boxH, "TOTAL DE FLUXO\nNOVOS", "#ffe600", novosFlux);
+    drawStatBox(rightX, rightTop + (boxH + boxGap)*1, rightW, boxH, "TOTAL DE FLUXO\nSEMINOVOS", "#89d46a", semisFlux);
+    drawStatBox(rightX, rightTop + (boxH + boxGap)*2, rightW, boxH, "TOTAL DE FLUXO\nVD", "#b8c7ff", vdFlux);
 
-      ctx.fillStyle="#fff"; ctx.fillRect(x+3,y+72,w-6,h-72-44);
-      ctx.strokeStyle="#111"; ctx.lineWidth=2;
-      ctx.beginPath(); ctx.moveTo(x,y+72); ctx.lineTo(x+w,y+72); ctx.stroke();
-
-      ctx.fillStyle="#111"; ctx.font="bold 56px Arial";
-      const v = String(value);
-      ctx.fillText(v, x+w/2-ctx.measureText(v).width/2, y+148);
-
-      ctx.fillStyle="#f3f3f3"; ctx.fillRect(x+3,y+h-44,w-6,41);
-      ctx.strokeStyle="#111"; ctx.lineWidth=2;
-      ctx.beginPath(); ctx.moveTo(x,y+h-44); ctx.lineTo(x+w,y+h-44); ctx.stroke();
-      ctx.fillStyle="#111"; ctx.font="bold 16px Arial";
-      const foot = `FLUXO DIA: ${flux} · ${conv}`;
-      ctx.fillText(foot, x+w/2-ctx.measureText(foot).width/2, y+h-16);
-    };
-
-    const miniY = 920;
-    const miniW = 440;
-    drawMini(40, miniY, miniW, 200, "#ffe600", "VENDAS / DIA\nNOVOS", sales.novos, novosFlux, pct(sales.novos, novosFlux));
-    drawMini(40+miniW+20, miniY, miniW, 200, "#89d46a", "VENDAS / DIA\nSEMINOVOS", sales.semis, semisFlux, pct(sales.semis, semisFlux));
-    drawMini(40+(miniW+20)*2, miniY, miniW, 200, "#b8c7ff", "VENDAS / DIA\nVD", sales.vd, vdFlux, pct(sales.vd, vdFlux));
-
-    // expand canvas height to include minis
-    // (recreate with correct size) — simples: se miniY+h ultrapassar, refaz:
-    const needH = miniY + 200 + 40;
-    if(exportCanvas.height < needH){
-      // refaz com altura maior (bem nerd, mas funciona)
-      const data = exportCanvas.toDataURL("image/png");
-      exportCanvas.height = needH;
-      const ctx2 = exportCanvas.getContext("2d");
-      await drawImageFromDataURL(ctx2, data, 0, 0);
-      // desenha minis novamente (já estão no data, então não precisa)
-    }
+    drawStatBox(rightX, rightTop + (boxH + boxGap)*3, rightW, boxH, "VENDAS / DIA\nNOVOS", "#ffe600", sales.novos, `FLUXO DIA: ${novosFlux} · ${pct(sales.novos, novosFlux)}`);
+    drawStatBox(rightX, rightTop + (boxH + boxGap)*4, rightW, boxH, "VENDAS / DIA\nSEMINOVOS", "#89d46a", sales.semis, `FLUXO DIA: ${semisFlux} · ${pct(sales.semis, semisFlux)}`);
+    drawStatBox(rightX, rightTop + (boxH + boxGap)*5, rightW, boxH, "VENDAS / DIA\nVD", "#b8c7ff", sales.vd, `FLUXO DIA: ${vdFlux} · ${pct(sales.vd, vdFlux)}`);
 
     const blob = await new Promise(res => exportCanvas.toBlob(res, "image/png", 1));
     if(!blob) throw new Error("Não consegui gerar PNG");
@@ -1556,12 +1626,20 @@ async function exportDaily(mode){
 
 /* ---------- settings ---------- */
 function saveSettings(){
-  state.webappUrl = (cfgUrl.value || "").trim();
+  try{
+    state.webappUrl = resolveWebAppUrl(cfgUrl.value).toString();
+    cfgUrl.value = state.webappUrl;
+  }catch(e){
+    setStatus("bad", "configuração inválida", `⚠️ <span class="mono small">${escapeHtml(String(e.message || e))}</span>`);
+    return;
+  }
+
   state.intervalSec = clampInt(cfgInterval.value, 15, 3600);
   state.storeName = (cfgStore.value || "").trim();
   saveState();
   reschedule();
-  setStatus("ok","configurações salvas", "✅ Configurações salvas em localStorage.");
+  setStatus("ok","configurações salvas", "✅ Configurações salvas em localStorage. Testando sincronização...");
+  syncNow(true);
 }
 function applyVendors(){
   const list = cfgVendors.value.split("\n").map(s=>s.trim()).filter(Boolean);
