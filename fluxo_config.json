@@ -1,0 +1,34 @@
+{
+  "app": {
+    "name": "FLUXO DE ATENDIMENTO E VENDAS",
+    "version": 1,
+    "storeName": "GM / Chevrolet"
+  },
+  "webapp": {
+    "url": "https://script.google.com/macros/s/AKfycbyD2TI1qmkBryQngjZ0eXb9dBnba5L5XS0zwxlBkfx2PccrLMbdOCmQY7UoxEg36nYo/exec",
+    "syncIntervalSec": 60,
+    "useNoCorsForPost": true,
+    "listLimit": 3000
+  },
+  "vendors": [
+    "LUCIANO",
+    "MOTTA",
+    "RANNDARA"
+  ],
+  "attendanceOrder": [
+    "LUCIANO",
+    "MOTTA",
+    "RANNDARA"
+  ],
+  "defaults": {
+    "mediaOptions": ["Passante", "Procura", "Telefone"],
+    "tipoVendaOptions": ["Vendas", "Seminovos", "Venda Direta"],
+    "initialDailySales": { "novos": 0, "semis": 0, "vd": 0 }
+  },
+  "ui": {
+    "theme": {
+      "accent": "#ffd400",
+      "darkMode": true
+    }
+  }
+}
