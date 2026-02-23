@@ -1096,8 +1096,8 @@ async function saveRecord(){
 
     const webappUrl = resolveWebAppUrl(state.webappUrl).toString();
 
-    // Alguns WebApps do Google falham com preflight quando enviamos application/json.
-    // Tentamos formatos compatíveis em sequência para reduzir "falha ao inserir".
+    // Alguns WebApps do Google falham com preflight/CORS ao receber JSON puro.
+    // Tentamos formatos compatíveis em sequência, incluindo no-cors.
     const payload = JSON.stringify({ action:"add", record: rec });
     const attempts = [
       () => fetch(webappUrl, {
@@ -1110,13 +1110,25 @@ async function saveRecord(){
         headers:{ "Content-Type":"application/x-www-form-urlencoded;charset=UTF-8" },
         body: new URLSearchParams({ action:"add", payload }).toString()
       }),
+      // fallback final: garante envio mesmo quando o navegador bloqueia leitura da resposta (opaque)
+      () => fetch(webappUrl, {
+        method:"POST",
+        mode:"no-cors",
+        headers:{ "Content-Type":"text/plain;charset=utf-8" },
+        body: payload
+      }),
     ];
 
     let j = null;
     let lastErr = null;
+    let sentWithNoCors = false;
     for(const run of attempts){
       try{
         const r = await run();
+        if(r.type === "opaque"){
+          sentWithNoCors = true;
+          break;
+        }
         const raw = await r.text();
         try{ j = JSON.parse(raw); }catch(_){ j = null; }
         if(!r.ok){
@@ -1130,7 +1142,7 @@ async function saveRecord(){
       }
     }
 
-    if(!j || !j.ok){
+    if(!sentWithNoCors && (!j || !j.ok)){
       throw (lastErr || new Error("Não foi possível salvar no WebApp."));
     }
 
@@ -1140,14 +1152,19 @@ async function saveRecord(){
     saveState();
 
     closeModal();
-    setStatus("ok", "registro inserido", `✅ Atendimento salvo na planilha e em cache local. <strong>${new Date(state.cachedAt).toLocaleString("pt-BR")}</strong>`);
+    if(sentWithNoCors){
+      setStatus("warn", "registro enviado (no-cors)", `⚠️ Envio feito com <span class="mono small">no-cors</span>. O navegador não permite ler a resposta, mas o dado foi enviado e salvo em cache local. Atualize em alguns segundos para confirmar na planilha.`);
+      setTimeout(() => syncNow(true), 1800);
+    }else{
+      setStatus("ok", "registro inserido", `✅ Atendimento salvo na planilha e em cache local. <strong>${new Date(state.cachedAt).toLocaleString("pt-BR")}</strong>`);
+    }
     renderAll();
 
     // opcional: avançar vendedor da vez automaticamente
     // nextSeller();
 
   }catch(e){
-    setStatus("bad", "falha ao inserir", `Erro: <span class="mono small">${escapeHtml(String(e))}</span><br/>Dica: valide no Apps Script se o WebApp está publicado em 'Qualquer pessoa' e se o doPost trata 'action=add'.`);
+    setStatus("bad", "falha ao inserir", `Erro: <span class="mono small">${escapeHtml(String(e))}</span><br/>Dica: publique o WebApp como 'Qualquer pessoa', permita <span class="mono small">doPost(e)</span> e trate JSON + URL encoded.`);
     alert("Falha ao salvar. Veja o status no topo.");
   }finally{
     $("btnSave").disabled = false;
