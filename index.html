@@ -41,13 +41,14 @@
       display:flex;align-items:center;gap:12px;min-width:0;
     }
     .logo{
-      width:44px;height:44px;border-radius:12px;
+      width:52px;height:52px;border-radius:12px;
       display:grid;place-items:center;
-      background: rgba(255,212,0,.12);
+      background:#05070a;
       border:1px solid rgba(255,212,0,.35);
       overflow:hidden;
+      padding:4px;
     }
-    .logo svg{width:34px;height:34px}
+    .logo svg{width:100%;height:100%;display:block}
     .title{
       line-height:1.1;min-width:0;
     }
@@ -252,9 +253,13 @@
     .modal{
       width:min(820px, 100%);
       border:1px solid var(--line);
-      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+      background: #111c2a;
       border-radius:18px;box-shadow: var(--shadow);
       overflow:hidden;
+    }
+    .modal input, .modal select, .modal textarea{
+      background:#0b131d;
+      border-color:#32495f;
     }
     .modalHeader{
       padding:14px 14px;border-bottom:1px solid var(--line);
@@ -282,12 +287,20 @@
   <div class="wrap">
     <header>
       <div class="brand">
-        <div class="logo" title="Chevrolet / GM (ícone estilizado)">
-          <!-- Ícone simples (não é logo oficial). Se você quiser usar a logo real, eu coloco quando você me mandar o PNG/SVG. -->
-          <svg viewBox="0 0 64 64" aria-hidden="true">
-            <path fill="rgba(255,212,0,.95)" d="M10 28h18l4-10h22v12H40l-4 10H10z"/>
-            <path fill="rgba(255,255,255,.65)" d="M12 30h22l4-10h14v8H40l-4 10H12z"/>
-            <path fill="rgba(0,0,0,.35)" d="M10 28h18l4-10h22v2H33l-4 10H10z"/>
+        <div class="logo" title="Chevrolet / GM">
+          <svg viewBox="0 0 64 32" aria-hidden="true">
+            <defs>
+              <linearGradient id="goldA" x1="0" x2="1">
+                <stop offset="0" stop-color="#6f5313"/>
+                <stop offset="0.18" stop-color="#e7cf84"/>
+                <stop offset="0.5" stop-color="#c6a759"/>
+                <stop offset="0.82" stop-color="#f5e2a6"/>
+                <stop offset="1" stop-color="#82631d"/>
+              </linearGradient>
+            </defs>
+            <path fill="url(#goldA)" stroke="#b9a271" stroke-width="1.5" d="M2 12h20l3-6h14v6h23v8H42l-3 6H25v-6H2z"/>
+            <path fill="rgba(255,255,255,.35)" d="M4 13h20l3-6h10v2H26l-3 6H4z"/>
+            <path fill="rgba(0,0,0,.28)" d="M2 20h23l3 6h11v-2H30l-3-6H2z"/>
           </svg>
         </div>
         <div class="title">
@@ -705,8 +718,9 @@
    =========================== */
 
 const LS_KEY = "fluxo_gm_v1";
+const DEFAULT_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbyD2TI1qmkBryQngjZ0eXb9dBnba5L5XS0zwxlBkfx2PccrLMbdOCmQY7UoxEg36nYo/exec";
 const DEFAULTS = {
-  webappUrl: "https://script.google.com/macros/s/AKfycbyD2TI1qmkBryQngjZ0eXb9dBnba5L5XS0zwxlBkfx2PccrLMbdOCmQY7UoxEg36nYo/exec",
+  webappUrl: DEFAULT_WEBAPP_URL,
   intervalSec: 60,
   storeName: "",
   vendors: ["LUCIANO", "MOTTA", "RANNDARA"],
@@ -872,6 +886,12 @@ function boot(){
   renderAll();
   syncNow(false);
 
+  // conectividade do navegador
+  window.addEventListener("online", () => syncNow(true));
+  window.addEventListener("offline", () => {
+    setStatus("bad", "offline (sem internet)", "⚠️ Sem internet no navegador. O sistema continua em cache local.");
+  });
+
   // schedule
   reschedule();
 }
@@ -881,7 +901,7 @@ function loadState(){
     const raw = localStorage.getItem(LS_KEY);
     if(!raw) return structuredClone(DEFAULTS);
     const parsed = JSON.parse(raw);
-    return {
+    const loaded = {
       ...structuredClone(DEFAULTS),
       ...parsed,
       vendors: Array.isArray(parsed.vendors) && parsed.vendors.length ? parsed.vendors : structuredClone(DEFAULTS.vendors),
@@ -889,6 +909,8 @@ function loadState(){
       cachedRows: Array.isArray(parsed.cachedRows) ? parsed.cachedRows : [],
       salesByDate: parsed.salesByDate || {}
     };
+    loaded.webappUrl = String(loaded.webappUrl || "").trim() || DEFAULT_WEBAPP_URL;
+    return loaded;
   }catch(e){
     return structuredClone(DEFAULTS);
   }
@@ -913,6 +935,20 @@ function setStatus(kind, msg, details){
   if(details){
     statusDetails.innerHTML = details;
   }
+}
+
+function resolveWebAppUrl(raw){
+  const value = String(raw || "").trim() || DEFAULT_WEBAPP_URL;
+  let url = null;
+  try{
+    url = new URL(value);
+  }catch(_){
+    throw new Error("URL do WebApp inválida. Revise em Configurações.");
+  }
+  if(!/^https?:$/.test(url.protocol)){
+    throw new Error("URL do WebApp deve começar com http:// ou https://.");
+  }
+  return url;
 }
 
 function switchTab(name){
@@ -973,7 +1009,7 @@ function closeModal(){
 async function healthCheck(){
   try{
     setStatus("warn", "testando conexão…");
-    const url = new URL(state.webappUrl);
+    const url = resolveWebAppUrl(state.webappUrl);
     url.searchParams.set("action","health");
     const r = await fetch(url.toString(), { method:"GET" });
     const j = await r.json();
@@ -993,7 +1029,7 @@ async function syncNow(force){
 
   try{
     setStatus("warn", "sincronizando…");
-    const url = new URL(state.webappUrl);
+    const url = resolveWebAppUrl(state.webappUrl);
     url.searchParams.set("action","list");
     url.searchParams.set("limit","3000"); // ajuste se precisar mais
     // (filtros por data poderiam vir aqui, mas como seu script pode não ter, filtramos local)
@@ -1020,7 +1056,10 @@ async function syncNow(force){
   }catch(e){
     lastSyncOk = false;
     // mantém cache e avisa
-    setStatus("bad", "offline (usando cache)", `⚠️ Não consegui atualizar agora. Mostrando dados do cache local.<br/>Erro: <span class="mono small">${escapeHtml(String(e))}</span>`);
+    const isOnline = navigator.onLine;
+    const kind = isOnline ? "warn" : "bad";
+    const msg = isOnline ? "online (falha de sincronização)" : "offline (usando cache)";
+    setStatus(kind, msg, `⚠️ Não consegui atualizar agora. Mostrando dados do cache local.<br/>Erro: <span class="mono small">${escapeHtml(String(e))}</span>`);
     renderAll();
   }
 }
@@ -1055,17 +1094,44 @@ async function saveRecord(){
     $("btnSave").disabled = true;
     $("btnSave").textContent = "Salvando…";
 
-    const r = await fetch(state.webappUrl, {
-      method:"POST",
-      headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify({ action:"add", record: rec })
-    });
+    const webappUrl = resolveWebAppUrl(state.webappUrl).toString();
+
+    // Alguns WebApps do Google falham com preflight quando enviamos application/json.
+    // Tentamos formatos compatíveis em sequência para reduzir "falha ao inserir".
+    const payload = JSON.stringify({ action:"add", record: rec });
+    const attempts = [
+      () => fetch(webappUrl, {
+        method:"POST",
+        headers:{ "Content-Type":"text/plain;charset=utf-8" },
+        body: payload
+      }),
+      () => fetch(webappUrl, {
+        method:"POST",
+        headers:{ "Content-Type":"application/x-www-form-urlencoded;charset=UTF-8" },
+        body: new URLSearchParams({ action:"add", payload }).toString()
+      }),
+    ];
 
     let j = null;
-    try{ j = await r.json(); }catch(_){}
+    let lastErr = null;
+    for(const run of attempts){
+      try{
+        const r = await run();
+        const raw = await r.text();
+        try{ j = JSON.parse(raw); }catch(_){ j = null; }
+        if(!r.ok){
+          throw new Error(`HTTP ${r.status} ${r.statusText}`);
+        }
+        if(j && j.ok) break;
+        throw new Error(j ? JSON.stringify(j) : `Resposta inválida do servidor: ${raw.slice(0,220)}`);
+      }catch(err){
+        lastErr = err;
+        j = null;
+      }
+    }
 
     if(!j || !j.ok){
-      throw new Error(j ? JSON.stringify(j) : "Resposta inválida do servidor");
+      throw (lastErr || new Error("Não foi possível salvar no WebApp."));
     }
 
     // Atualiza cache local “instantâneo”
@@ -1081,7 +1147,7 @@ async function saveRecord(){
     // nextSeller();
 
   }catch(e){
-    setStatus("bad", "falha ao inserir", `Erro: <span class="mono small">${escapeHtml(String(e))}</span>`);
+    setStatus("bad", "falha ao inserir", `Erro: <span class="mono small">${escapeHtml(String(e))}</span><br/>Dica: valide no Apps Script se o WebApp está publicado em 'Qualquer pessoa' e se o doPost trata 'action=add'.`);
     alert("Falha ao salvar. Veja o status no topo.");
   }finally{
     $("btnSave").disabled = false;
@@ -1556,12 +1622,20 @@ async function exportDaily(mode){
 
 /* ---------- settings ---------- */
 function saveSettings(){
-  state.webappUrl = (cfgUrl.value || "").trim();
+  try{
+    state.webappUrl = resolveWebAppUrl(cfgUrl.value).toString();
+    cfgUrl.value = state.webappUrl;
+  }catch(e){
+    setStatus("bad", "configuração inválida", `⚠️ <span class="mono small">${escapeHtml(String(e.message || e))}</span>`);
+    return;
+  }
+
   state.intervalSec = clampInt(cfgInterval.value, 15, 3600);
   state.storeName = (cfgStore.value || "").trim();
   saveState();
   reschedule();
-  setStatus("ok","configurações salvas", "✅ Configurações salvas em localStorage.");
+  setStatus("ok","configurações salvas", "✅ Configurações salvas em localStorage. Testando sincronização...");
+  syncNow(true);
 }
 function applyVendors(){
   const list = cfgVendors.value.split("\n").map(s=>s.trim()).filter(Boolean);
