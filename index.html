@@ -937,6 +937,20 @@ function setStatus(kind, msg, details){
   }
 }
 
+function resolveWebAppUrl(raw){
+  const value = String(raw || "").trim() || DEFAULT_WEBAPP_URL;
+  let url = null;
+  try{
+    url = new URL(value);
+  }catch(_){
+    throw new Error("URL do WebApp inválida. Revise em Configurações.");
+  }
+  if(!/^https?:$/.test(url.protocol)){
+    throw new Error("URL do WebApp deve começar com http:// ou https://.");
+  }
+  return url;
+}
+
 function switchTab(name){
   tabs.forEach(t => t.setAttribute("aria-selected", String(t.dataset.tab===name)));
   Object.keys(tabPanels).forEach(k => tabPanels[k].style.display = (k===name) ? "block" : "none");
@@ -995,7 +1009,7 @@ function closeModal(){
 async function healthCheck(){
   try{
     setStatus("warn", "testando conexão…");
-    const url = new URL(state.webappUrl);
+    const url = resolveWebAppUrl(state.webappUrl);
     url.searchParams.set("action","health");
     const r = await fetch(url.toString(), { method:"GET" });
     const j = await r.json();
@@ -1015,7 +1029,7 @@ async function syncNow(force){
 
   try{
     setStatus("warn", "sincronizando…");
-    const url = new URL(state.webappUrl);
+    const url = resolveWebAppUrl(state.webappUrl);
     url.searchParams.set("action","list");
     url.searchParams.set("limit","3000"); // ajuste se precisar mais
     // (filtros por data poderiam vir aqui, mas como seu script pode não ter, filtramos local)
@@ -1581,12 +1595,20 @@ async function exportDaily(mode){
 
 /* ---------- settings ---------- */
 function saveSettings(){
-  state.webappUrl = (cfgUrl.value || "").trim();
+  try{
+    state.webappUrl = resolveWebAppUrl(cfgUrl.value).toString();
+    cfgUrl.value = state.webappUrl;
+  }catch(e){
+    setStatus("bad", "configuração inválida", `⚠️ <span class="mono small">${escapeHtml(String(e.message || e))}</span>`);
+    return;
+  }
+
   state.intervalSec = clampInt(cfgInterval.value, 15, 3600);
   state.storeName = (cfgStore.value || "").trim();
   saveState();
   reschedule();
-  setStatus("ok","configurações salvas", "✅ Configurações salvas em localStorage.");
+  setStatus("ok","configurações salvas", "✅ Configurações salvas em localStorage. Testando sincronização...");
+  syncNow(true);
 }
 function applyVendors(){
   const list = cfgVendors.value.split("\n").map(s=>s.trim()).filter(Boolean);
