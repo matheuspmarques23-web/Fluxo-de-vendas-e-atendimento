@@ -1094,17 +1094,44 @@ async function saveRecord(){
     $("btnSave").disabled = true;
     $("btnSave").textContent = "Salvando…";
 
-    const r = await fetch(state.webappUrl, {
-      method:"POST",
-      headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify({ action:"add", record: rec })
-    });
+    const webappUrl = resolveWebAppUrl(state.webappUrl).toString();
+
+    // Alguns WebApps do Google falham com preflight quando enviamos application/json.
+    // Tentamos formatos compatíveis em sequência para reduzir "falha ao inserir".
+    const payload = JSON.stringify({ action:"add", record: rec });
+    const attempts = [
+      () => fetch(webappUrl, {
+        method:"POST",
+        headers:{ "Content-Type":"text/plain;charset=utf-8" },
+        body: payload
+      }),
+      () => fetch(webappUrl, {
+        method:"POST",
+        headers:{ "Content-Type":"application/x-www-form-urlencoded;charset=UTF-8" },
+        body: new URLSearchParams({ action:"add", payload }).toString()
+      }),
+    ];
 
     let j = null;
-    try{ j = await r.json(); }catch(_){}
+    let lastErr = null;
+    for(const run of attempts){
+      try{
+        const r = await run();
+        const raw = await r.text();
+        try{ j = JSON.parse(raw); }catch(_){ j = null; }
+        if(!r.ok){
+          throw new Error(`HTTP ${r.status} ${r.statusText}`);
+        }
+        if(j && j.ok) break;
+        throw new Error(j ? JSON.stringify(j) : `Resposta inválida do servidor: ${raw.slice(0,220)}`);
+      }catch(err){
+        lastErr = err;
+        j = null;
+      }
+    }
 
     if(!j || !j.ok){
-      throw new Error(j ? JSON.stringify(j) : "Resposta inválida do servidor");
+      throw (lastErr || new Error("Não foi possível salvar no WebApp."));
     }
 
     // Atualiza cache local “instantâneo”
@@ -1120,7 +1147,7 @@ async function saveRecord(){
     // nextSeller();
 
   }catch(e){
-    setStatus("bad", "falha ao inserir", `Erro: <span class="mono small">${escapeHtml(String(e))}</span>`);
+    setStatus("bad", "falha ao inserir", `Erro: <span class="mono small">${escapeHtml(String(e))}</span><br/>Dica: valide no Apps Script se o WebApp está publicado em 'Qualquer pessoa' e se o doPost trata 'action=add'.`);
     alert("Falha ao salvar. Veja o status no topo.");
   }finally{
     $("btnSave").disabled = false;
